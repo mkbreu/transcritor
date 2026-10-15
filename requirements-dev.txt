@@ -1,0 +1,4 @@
+# Ferramentas de desenvolvimento (testes e revisão de código).
+-r requirements.txt
+pytest==9.1.1
+ruff==0.17.0

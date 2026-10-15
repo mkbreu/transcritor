@@ -1,0 +1,53 @@
+# =====================================================================
+#  Configurações do Transcritor
+#  Edite com o Bloco de Notas e salve. Linhas que começam com # são
+#  comentários. Use true (sim) ou false (não). Números com ponto: 0.5
+# =====================================================================
+
+[texto]
+# Colocar o horário da gravação no início de cada fala, ex.: [12:34] Fulano: ...
+mostrar_horarios = false
+
+# Uma frase por linha (com o nome da pessoa em cada linha) em vez de parágrafos.
+uma_frase_por_linha = false
+
+[vozes]
+# Separar quem fala (vozes). Se false, o texto sai em parágrafos, sem nomes.
+separar_vozes = true
+
+# Perguntar quantas pessoas falam antes de processar (Enter = descobrir sozinho).
+# Informar o número certo melhora bastante a separação.
+perguntar_numero_de_pessoas = true
+
+# Sensibilidade da separação, de 0.05 a 0.95 (padrão 0.5).
+# Aumente se o programa juntar pessoas diferentes numa voz só;
+# diminua se ele dividir a mesma pessoa em várias vozes.
+sensibilidade_separacao = 0.5
+
+# Reconhecer automaticamente vozes já conhecidas (a sua, por exemplo).
+reconhecer_vozes = true
+
+# Semelhança mínima para sugerir que uma voz é de alguém conhecido (0.1 a 0.99).
+semelhanca_minima = 0.55
+
+# Além da sua voz, memorizar também as vozes das outras pessoas que você nomear.
+memorizar_outras_vozes = false
+
+[audio]
+# Ao transcrever um VÍDEO, salvar também o áudio extraído (.m4a ou .mp3).
+salvar_audio_extraido = true
+
+[desempenho]
+# Quantos núcleos do processador usar (seu i5-4200U tem 4 threads).
+threads = 4
+
+# Rodar com prioridade baixa para o computador continuar utilizável.
+prioridade_baixa = true
+
+# Memória livre recomendada (GB). Abaixo disso o programa avisa antes de começar.
+# (Pico medido neste PC: ~0,9 GB na transcrição e bem menos na separação de vozes.)
+memoria_recomendada_gb = 1.2
+
+[manutencao]
+# Apagar do cache (pasta dados\cache) o que não for usado há este número de dias.
+manter_cache_dias = 30

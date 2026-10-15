@@ -1,0 +1,15 @@
+# Ambiente e arquivos gerados pelo Transcritor (não versionar)
+.venv/
+modelos/
+logs/
+dados/
+
+# Python
+__pycache__/
+*.py[cod]
+.pytest_cache/
+.ruff_cache/
+
+# Temporários
+*.tmp
+*.part

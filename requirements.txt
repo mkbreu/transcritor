@@ -1,0 +1,7 @@
+# Pacotes do Transcritor (versões fixadas para não quebrar com atualizações).
+# Instalados automaticamente na pasta .venv pelo instalar.py.
+sherpa-onnx==1.13.8
+sherpa-onnx-core==1.13.8
+av==19.0.1
+numpy==2.5.4
+rich==15.0.0

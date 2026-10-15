@@ -1,0 +1,23 @@
+[project]
+name = "transcritor"
+version = "1.0.0"
+description = "Transcreve áudio, vídeo ou legenda SRT em texto organizado por falante, pronto para IA."
+requires-python = ">=3.12"
+
+[tool.ruff]
+line-length = 110
+target-version = "py312"
+extend-exclude = ["_antigo"]  # backup do script antigo, mantido como estava
+
+[tool.ruff.lint]
+select = ["E", "F", "W", "I", "B", "UP", "SIM", "RUF"]
+ignore = ["RUF001", "RUF002", "RUF003"]  # aspas e travessões tipográficos são intencionais (português)
+
+[tool.ruff.lint.per-file-ignores]
+"ferramentas/gerar_dialogo_teste.py" = ["E501"]  # falas do diálogo de teste ficam numa linha só
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "-m 'not lento'"
+markers = ["lento: testes que usam os modelos de IA (demoram alguns minutos); rode com -m lento"]
