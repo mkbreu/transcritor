@@ -12,11 +12,20 @@ from transcritor.transcript import Transcript, Word
 def test_cache_da_separacao_so_vale_com_as_mesmas_opcoes(tmp_path: Path):
     entry = CacheEntry(tmp_path)
     turns = [SpeakerTurn(0.0, 1.5, "A"), SpeakerTurn(1.6, 3.0, "B")]
-    pipeline._save_diarization(entry, 2, 0.7, turns, {"A": [0.1, 0.2]})
-    loaded = pipeline._load_diarization(entry, 2, 0.7)
-    assert loaded == (turns, {"A": [0.1, 0.2]})
-    assert pipeline._load_diarization(entry, None, 0.7) is None  # outro nº de pessoas
-    assert pipeline._load_diarization(entry, 2, 0.6) is None  # outra sensibilidade
+    options = {"metodo": pipeline.RESULT_VERSION, "pessoas": 2, "limiar": 0.7, "juntar": 0.6}
+    pipeline._save_diarization(entry, options, turns, {"A": [0.1, 0.2]})
+    assert pipeline._load_diarization(entry, options) == (turns, {"A": [0.1, 0.2]})
+    assert pipeline._load_diarization(entry, options | {"pessoas": None}) is None  # outro nº de pessoas
+    assert pipeline._load_diarization(entry, options | {"juntar": 0.65}) is None  # outra sensibilidade
+
+
+def test_separacao_feita_pelo_metodo_antigo_e_refeita(tmp_path: Path):
+    entry = CacheEntry(tmp_path)
+    # formato da versão anterior: sem "metodo" (gerou 12 vozes numa gravação de 1 pessoa)
+    entry.diarization.write_text('{"pessoas": null, "limiar": 0.7, "trechos": [[0, 1, "A"]]}',
+                                 encoding="utf-8")
+    options = {"metodo": pipeline.RESULT_VERSION, "pessoas": None, "limiar": 0.7, "juntar": 0.6}
+    assert pipeline._load_diarization(entry, options) is None
 
 
 def test_montagem_final_com_vozes(tmp_path: Path):

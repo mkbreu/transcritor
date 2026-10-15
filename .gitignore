@@ -13,3 +13,6 @@ __pycache__/
 # Temporários
 *.tmp
 *.part
+
+# Anotações pessoais (ex.: gravações de voz transcritas) — nunca publicar
+**/Record-*.md

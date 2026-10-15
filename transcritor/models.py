@@ -69,14 +69,24 @@ VAD = ModelSpec(
     sha256="9e2449e1087496d8d4caba907f23e0bd3f78d91fa552479bb9c23ac09cbb1fd6",
     target="silero_vad.onnx",
 )
+# Segmentação "quem fala quando": Reverb diarization v1 (Rev), um pyannote 3.0 retreinado
+# pela Rev com 26 mil horas. Nos testes com vozes reais (ferramentas\avaliar_separacao.py)
+# partiu muito menos a mesma pessoa (gravação real de 1 pessoa: 5 grupos em vez de 12) e
+# deixou pessoas diferentes mais distintas (semelhança máx. 0,44 em vez de 0,57).
+# Licença: "Rev Model Non-Production License" — uso pessoal, pesquisa ou avaliação; não pode
+# ser usada em atividade comercial (ver README.md).
 SEGMENTATION = ModelSpec(
     key="segmentation",
-    label="Separação de vozes — segmentação pyannote 3.0",
-    url=f"{_BASE}/speaker-segmentation-models/sherpa-onnx-pyannote-segmentation-3-0.tar.bz2",
-    size=6_958_444,
-    sha256=None,  # o lançamento não publica o SHA-256 deste arquivo; conferimos o tamanho
-    target="sherpa-onnx-pyannote-segmentation-3-0",
+    label="Separação de vozes — Reverb diarization v1 (Rev, uso não comercial)",
+    url=f"{_BASE}/speaker-segmentation-models/sherpa-onnx-reverb-diarization-v1.tar.bz2",
+    size=10_918_585,
+    sha256="615761e980be1688da0ef81618c056134d63aa55ea0a5f1494c47393b9398eab",
+    target="sherpa-onnx-reverb-diarization-v1",
     required_files=("model.onnx",),
+)
+SEGMENTATION_LICENSE_NOTICE = (
+    "Licensed by Rev under the Rev Model Non-Production License "
+    "(uso pessoal, pesquisa ou avaliação; proibido em atividade comercial)."
 )
 # "recongition" (com erro de digitação) é o nome real da tag no GitHub.
 _SPEAKER_MODELS = f"{_BASE}/speaker-recongition-models"

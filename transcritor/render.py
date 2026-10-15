@@ -15,7 +15,7 @@ SEPARATOR = "=" * 64
 
 @dataclass(slots=True)
 class RenderOptions:
-    show_times: bool = False
+    show_times: bool = True  # "[início – fim]" da gravação no começo de cada parágrafo
     one_sentence_per_line: bool = False
 
 
@@ -51,7 +51,7 @@ def _header(
     ]
     if transcript.has_speakers:
         participants = list(dict.fromkeys(names[label] for label in transcript.labels))
-        me = names.get(transcript.me_label) if transcript.me_label else None
+        me = transcript.me_name
         participants = [f"{name} (eu)" if name == me else name for name in participants]
         if participants:
             lines.append(f"Participantes: {', '.join(participants)}")
@@ -63,7 +63,7 @@ def _header(
     if any(p.speaker is None and p.overlap for p in paragraphs):
         notes.append(f'"{OVERLAP_NAME}" = duas ou mais pessoas falando ao mesmo tempo.')
     if options.show_times:
-        notes.append("[hh:mm:ss] = momento da gravação em que a fala começa.")
+        notes.append("[início – fim] = trecho da gravação em que aquela fala acontece.")
     lines.append("Observações:")
     lines += [f"- {note}" for note in notes]
     return lines
@@ -72,15 +72,17 @@ def _header(
 def _paragraph_lines(
     transcript: Transcript, paragraph: Paragraph, options: RenderOptions, long_audio: bool
 ) -> list[str]:
-    prefix = f"[{format_clock(paragraph.start, long_audio)}] " if options.show_times else ""
+    def stamp(start: float, end: float) -> str:
+        if not options.show_times:
+            return ""
+        return f"[{format_clock(start, long_audio)} – {format_clock(end, long_audio)}] "
+
+    name = ""
     if transcript.has_speakers:
-        name = transcript.display_name(paragraph.speaker, paragraph.overlap)
-        if options.one_sentence_per_line:
-            return [f"{prefix}{name}: {s.text}" for s in paragraph.sentences]
-        return [f"{prefix}{name}: {paragraph.text}"]
+        name = transcript.display_name(paragraph.speaker, paragraph.overlap) + ": "
     if options.one_sentence_per_line:
-        return [f"{prefix}{s.text}" for s in paragraph.sentences]
-    return [f"{prefix}{paragraph.text}"]
+        return [f"{stamp(s.start, s.end)}{name}{s.text}" for s in paragraph.sentences]
+    return [f"{stamp(paragraph.start, paragraph.end)}{name}{paragraph.text}"]
 
 
 def format_duration(seconds: float) -> str:

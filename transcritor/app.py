@@ -16,9 +16,10 @@ from rich.table import Table
 from . import __version__, cache, dialogs, media, render, winsys
 from . import console as ui
 from .logging_setup import setup_logging
-from .pipeline import Cancelled, Job, gb, process
+from .pipeline import RESULT_VERSION, Cancelled, Job, gb, process
 from .settings import Settings, State, load_settings
 from .subtitles import SUBTITLE_EXTENSIONS
+from .transcript import Transcript
 from .voices import VoiceBook, name_speakers
 
 log = logging.getLogger("transcritor")
@@ -225,16 +226,33 @@ def _ask_media_questions(job: Job, settings: Settings) -> None:
     job.entry = cache.entry_for(job.source)
     if job.entry.transcript.exists():
         when = datetime.fromtimestamp(job.entry.transcript.stat().st_mtime)
-        ui.info(f"{job.source.name} já foi transcrito em {when:%d/%m/%Y às %H:%M}.")
-        job.reuse = ui.ask_yes_no(
-            "Reaproveitar esse resultado? (instantâneo; você ainda pode renomear as vozes)", True
-        )
-        if job.reuse:
-            return
+        if _cached_version(job.entry) >= RESULT_VERSION:
+            ui.info(f"{job.source.name} já foi transcrito em {when:%d/%m/%Y às %H:%M}.")
+            job.reuse = ui.ask_yes_no(
+                "Reaproveitar esse resultado? (instantâneo; você ainda pode renomear as vozes)", True
+            )
+            if job.reuse:
+                return
+        else:
+            ui.info(f"{job.source.name} foi transcrito em {when:%d/%m/%Y às %H:%M} por uma versão "
+                    "anterior: a transcrição já pronta é reaproveitada e as vozes são separadas de novo, "
+                    "com o método atual.")
     if settings.separar_vozes and settings.perguntar_numero_de_pessoas:
         job.num_speakers = ui.ask_int(
             f"Quantas pessoas falam em {job.source.name}? (Enter = descobrir sozinho)", 1, 20
         )
+        if job.num_speakers:
+            ui.ok(f"Ok: {job.num_speakers} {'pessoa' if job.num_speakers == 1 else 'pessoas'} — é uma "
+                  "pista: o programa confere pela voz quantas pessoas falam de fato.")
+        else:
+            ui.ok("Ok: o programa vai descobrir quantas pessoas falam.")
+
+
+def _cached_version(entry: cache.CacheEntry) -> int:
+    try:
+        return Transcript.load(entry.transcript).version
+    except (OSError, ValueError, KeyError, TypeError):
+        return 0
 
 
 # ------------------------------------------------------------------ vozes, gravação e resumo

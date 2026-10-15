@@ -44,6 +44,26 @@ def test_classifica_arquivos(tmp_path: Path):
     assert app._classify(tmp_path / "nao_existe.mp3").message == "arquivo não encontrado"
 
 
+def test_numero_de_pessoas_entende_texto_e_extenso():
+    assert ui.parse_number("2") == 2
+    assert ui.parse_number("2 pessoas") == 2
+    assert ui.parse_number("duas") == 2
+    assert ui.parse_number("Três pessoas") == 3
+    assert ui.parse_number("não sei") is None
+
+
+def test_resultado_de_versao_anterior_nao_e_oferecido_para_reaproveitar(tmp_path: Path):
+    from transcritor.cache import CacheEntry
+
+    entry = CacheEntry(tmp_path)
+    old = Transcript("x.mp4", "video", 1.0, [Sentence("Oi.", 0, 1, "A")], "teste", True)
+    old.save(entry.transcript)  # versão 1 (método antigo)
+    assert app._cached_version(entry) < pipeline.RESULT_VERSION
+    old.version = pipeline.RESULT_VERSION
+    old.save(entry.transcript)
+    assert app._cached_version(entry) == pipeline.RESULT_VERSION
+
+
 def test_pasta_arrastada_vira_lista_de_arquivos(tmp_path: Path):
     for name in ("b.mp4", "a.srt", "notas.txt", "c.MP3"):
         (tmp_path / name).write_text("x", encoding="utf-8")

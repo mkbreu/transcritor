@@ -4,6 +4,18 @@ Transforma **vídeo, áudio ou legenda SRT** em um **texto organizado por pessoa
 completas e em ordem — pronto para anexar no ChatGPT, Claude ou outra IA. Tudo roda **no seu
 computador** (sem internet, sem conta, sem limite de minutos) depois de instalado.
 
+Gratuito para uso **não comercial** — licença [PolyForm Noncommercial 1.0.0](LICENSE).
+
+## Instalação
+
+Precisa de **Windows 10 ou 11**, **Python 3.12** ([python.org](https://www.python.org/downloads/))
+e ~1,5 GB livres no disco. Funciona em computadores modestos (testado num i5 de 2013 com 8 GB).
+
+1. Baixe este projeto (botão **Code → Download ZIP**) e descompacte numa pasta.
+2. Dê dois cliques em **`Transcritor.bat`**. Na primeira vez ele prepara tudo sozinho (precisa
+   de internet): cria um ambiente isolado, baixa os pacotes e os modelos de IA (~690 MB) e cria
+   o atalho **Transcritor** na Área de Trabalho.
+
 ## Como usar
 
 1. Dê dois cliques no atalho **Transcritor** da Área de Trabalho
@@ -12,14 +24,21 @@ computador** (sem internet, sem conta, sem limite de minutos) depois de instalad
    O programa descobre sozinho o que é cada um.
 3. Escolha onde salvar o texto (`.txt`). Se for vídeo, ele também pergunta onde salvar o
    **áudio extraído** (cancele essa janela se não quiser o áudio).
-4. Responda quantas pessoas falam (ou só Enter para ele descobrir sozinho).
+4. Responda quantas pessoas falam (ou só Enter para ele descobrir sozinho). O número é só
+   uma **pista**: o programa sempre confere pela voz quantas pessoas falam de fato. Se achar
+   menos do que você disse, ele refaz a separação procurando o seu número; se achar mais,
+   mostra todas para você conferir.
 5. Aguarde: a barra mostra o andamento e o tempo que falta. Pode continuar usando o PC.
 6. **Quem é quem:** para cada voz encontrada aparecem frases de exemplo com o momento da
    gravação, ex.: `[03:15] "Houve uma tentativa de estorno..."`.
    - digite **1**, **2** ou **3** para **ouvir** aquele trecho;
    - digite **M** para ver mais exemplos;
-   - digite o **nome** da pessoa (ou Enter para manter "Pessoa A").
+   - digite o **nome** da pessoa (ou Enter para manter "Pessoa A");
+   - para a **sua** voz, escreva **(eu)** depois do nome — ex.: `Maykon (eu)` — ou só `eu`.
+     Pode marcar quantas vozes forem suas: todas viram você no texto.
    - Deu o **mesmo nome** a duas vozes? Elas viram uma só pessoa no texto.
+   - O programa prefere **sobrar** uma voz a juntar duas pessoas diferentes (isso não teria
+     conserto). Se aparecer a mesma pessoa duas vezes, é só dar o mesmo nome.
 7. No final aparece o resumo. Opções: **A** abre o TXT, **P** abre a pasta,
    **N** transcreve outros arquivos, **Enter** sai. A janela nunca fecha sozinha.
 
@@ -34,18 +53,23 @@ Participantes: Fulano (eu), Atendente, Gerente
 Observações:
 - Transcrição automática, em ordem cronológica; pode conter pequenos erros.
 - "[Não identificado]" = trecho em que não foi possível saber quem falou.
+- [início – fim] = trecho da gravação em que aquela fala acontece.
 ================================================================
 
-Fulano: Boa tarde. Houve uma tentativa de estorno, porém não houve efetivação.
+[00:00 – 00:10] Fulano: Boa tarde. Houve uma tentativa de estorno, porém não houve efetivação.
 
-Atendente: Senhor, deixa eu verificar no sistema.
+[00:11 – 00:16] Atendente: Senhor, deixa eu verificar no sistema.
 ```
+
+Cada parágrafo é uma fala completa de uma pessoa; quando outra pessoa começa a falar, começa
+um novo parágrafo (se a fala foi cortada no meio, ela termina com "…").
 
 ## Reconhecer a sua voz
 
-Na primeira vez, o programa pergunta **qual das vozes é a sua**. A partir daí ele guarda a sua
-"impressão vocal" (só números, nunca o áudio) e, nas próximas gravações, a sua voz já vem com
-o seu nome — basta confirmar com Enter. Quanto mais você usa, melhor ele reconhece.
+Marque a sua voz com **(eu)** ao dar os nomes (ou responda, no final, quais letras são suas —
+pode ser mais de uma, ex.: `A C`). O programa guarda a sua "impressão vocal" (só números,
+nunca o áudio) e, nas próximas gravações, a sua voz já vem com o seu nome — basta confirmar
+com Enter. Quanto mais você usa, melhor ele reconhece.
 
 ## Dicas para o melhor resultado
 
@@ -67,7 +91,7 @@ Abra `config.toml` com o Bloco de Notas. Cada opção tem explicação. As mais 
 
 | Opção | O que faz |
 |---|---|
-| `mostrar_horarios` | coloca `[12:34]` no início de cada fala (útil para citar trechos) |
+| `mostrar_horarios` | `[início – fim]` de cada parágrafo (ligado); `false` = texto sem horários |
 | `uma_frase_por_linha` | cada frase numa linha, com o nome da pessoa |
 | `separar_vozes` | `false` = texto corrido, sem identificar quem fala (mais rápido) |
 | `sensibilidade_separacao` | aumente se juntar pessoas diferentes; diminua se dividir uma pessoa |
@@ -109,12 +133,35 @@ Tudo é processado **no seu computador**. Nenhum áudio ou texto é enviado para
   usa quase o dobro de memória). Pico de memória medido neste PC: ~0,9 GB.
 - **Detecção de fala:** Silero VAD; o áudio é dividido em pedaços de até 20 s nas pausas, para
   usar pouca memória em gravações de qualquer duração.
-- **Separação de vozes:** segmentação pyannote 3.0 + impressão vocal NVIDIA TitaNet small.
-  Escolhido por testes com vozes humanas reais (`ferramentas\avaliar_separacao.py`):
-  93% da fala atribuída à pessoa certa numa conversa de 3 pessoas reais e 100% no diálogo
-  em português, encontrando sozinho o número de pessoas. O modelo WeSpeaker, testado antes,
-  quase não distinguia pessoas diferentes e foi descartado.
+- **Separação de vozes:** segmentação **Reverb diarization v1** (Rev) + impressão vocal
+  **NVIDIA TitaNet small**, seguidas de um **refino**: vozes com menos de 2 s de fala (tosse,
+  ruído) são absorvidas, e grupos cujas impressões vocais médias são parecidas (≥ 0,60) viram
+  a mesma pessoa. Sem isso, uma gravação real de 47 min de uma pessoa só dava 12 "vozes".
+  Tudo foi escolhido e calibrado com vozes humanas reais (`ferramentas\avaliar_separacao.py`):
+  a Reverb partiu muito menos a mesma pessoa que a segmentação pyannote 3.0 (5 grupos em vez
+  de 12) e deixou pessoas diferentes mais distintas (semelhança máxima 0,44 em vez de 0,57),
+  o que dá uma margem de 0,16 contra o erro sem conserto (misturar duas pessoas). TitaNet
+  small venceu os modelos maiores testados (TitaNet large, ERes2NetV2, WeSpeaker, CAM++).
 - **Frases:** pontuação do modelo + regras para abreviações em português (Sr., Dra., R$ 1.500,00).
+
+## Licenças dos componentes
+
+O Transcritor baixa os modelos de IA dos lançamentos oficiais do projeto sherpa-onnx; cada um
+tem a sua licença:
+
+| Componente | Licença |
+|---|---|
+| sherpa-onnx (motor) | Apache 2.0 |
+| NVIDIA Parakeet TDT 0.6B v3 (transcrição) | CC BY 4.0 |
+| NVIDIA TitaNet small (impressão vocal) | CC BY 4.0 |
+| Silero VAD (detecção de fala) | MIT |
+| **Reverb diarization v1 (separação de vozes)** | **Rev Model Non-Production License** |
+| PyAV / FFmpeg, numpy, rich | BSD / LGPL, BSD, MIT |
+
+**Atenção — Reverb:** "Licensed by Rev under the Rev Model Non-Production License". Pode ser
+usada para fins **pessoais, de pesquisa ou avaliação**; não pode ser usada em atividade
+comercial (inclusive como serviço). Para uso comercial é preciso licença da Rev
+(licensing@rev.com).
 
 ## Alternativas prontas (pesquisa de outubro/2026)
 
@@ -138,3 +185,11 @@ py -3.12 instalar.py --dev                     (re)instala tudo, com as ferramen
 `ferramentas\gerar_dialogo_teste.py` cria um diálogo de teste com as vozes do Windows;
 `ferramentas\avaliar_separacao.py` compara modelos de separação de vozes com gravações reais;
 `ferramentas\gerar_icone.py` desenha o ícone.
+
+## Licença
+
+O código do Transcritor está sob a [PolyForm Noncommercial License 1.0.0](LICENSE): qualquer
+pessoa pode usar, copiar, modificar e compartilhar **de graça, para fins não comerciais**
+(uso pessoal, estudo, pesquisa, projetos sociais, entidades sem fins lucrativos). Uso comercial
+não é permitido. Os modelos de IA baixados na instalação têm as licenças próprias listadas em
+[Licenças dos componentes](#licenças-dos-componentes).

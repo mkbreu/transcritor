@@ -6,6 +6,7 @@ Usa só símbolos que a fonte padrão do console do Windows 10 mostra (sem emoji
 from __future__ import annotations
 
 import contextlib
+import re
 import time
 from collections.abc import Iterator
 
@@ -103,14 +104,32 @@ def ask_yes_no(prompt: str, default: bool = True) -> bool:
         warn("Responda S (sim) ou N (não).")
 
 
+_NUMBER_WORDS = {
+    "um": 1, "uma": 1, "dois": 2, "duas": 2, "tres": 3, "três": 3, "quatro": 4, "cinco": 5,
+    "seis": 6, "sete": 7, "oito": 8, "nove": 9, "dez": 10,
+}
+
+
+def parse_number(answer: str) -> int | None:
+    """Primeiro número da resposta, em algarismos ou por extenso: "2 pessoas", "duas" → 2."""
+    match = re.search(r"\d+", answer)
+    if match:
+        return int(match.group())
+    for word in re.findall(r"[a-zà-ú]+", answer.lower()):
+        if word in _NUMBER_WORDS:
+            return _NUMBER_WORDS[word]
+    return None
+
+
 def ask_int(prompt: str, low: int, high: int) -> int | None:
-    """Número entre `low` e `high`; Enter devolve None."""
+    """Número entre `low` e `high` (aceita "2 pessoas", "duas"...); Enter devolve None."""
     while True:
         answer = ask(prompt)
         if not answer:
             return None
-        if answer.isdigit() and low <= int(answer) <= high:
-            return int(answer)
+        number = parse_number(answer)
+        if number is not None and low <= number <= high:
+            return number
         warn(f"Digite um número de {low} a {high}, ou só Enter.")
 
 

@@ -50,11 +50,19 @@ def test_transcricao_do_dialogo_em_portugues(tmp_path: Path):
 
 
 def test_separacao_das_duas_vozes_do_dialogo():
-    from transcritor.diarization import Diarizer
+    from transcritor.diarization import (
+        Diarizer,
+        VoiceEmbedder,
+        merge_similarity_from_sensitivity,
+        refine_speakers,
+    )
 
     truth = json.loads(DIALOGUE.with_suffix(".json").read_text(encoding="utf-8"))
     samples = media.load_wav_lowmem(DIALOGUE)
-    turns = Diarizer(threads=4, sensitivity=0.5).run(samples, num_speakers=2)
+    # o mesmo caminho do programa: nº de pessoas descoberto sozinho + refino
+    raw = Diarizer(threads=4, sensitivity=0.5).run(samples, num_speakers=None)
+    turns, _ = refine_speakers(samples, raw, VoiceEmbedder(4), merge_similarity_from_sensitivity(0.5))
+    assert len({turn.label for turn in turns}) == 2
     # cada fala do gabarito → voz que mais cobre o seu tempo
     votes = []
     for item in truth:

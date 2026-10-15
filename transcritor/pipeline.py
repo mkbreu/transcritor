@@ -22,8 +22,9 @@ from .diarization import (
     VoiceEmbedder,
     assign_speakers,
     build_sentences,
+    merge_similarity_from_sensitivity,
+    separate_speakers,
     threshold_from_sensitivity,
-    voice_prints,
 )
 from .sentences import split_into_sentences, words_from_cues
 from .settings import Settings
@@ -31,6 +32,12 @@ from .subtitles import SubtitleError, parse_subtitle_file
 from .transcript import Transcript, Word
 
 log = logging.getLogger("transcritor")
+
+# Versão do método de separação de vozes. Resultados guardados no cache com versão anterior
+# não são reaproveitados (a transcrição em si é reaproveitada; só as vozes são refeitas).
+# 2 = refino que absorve migalhas e junta grupos da mesma pessoa.
+# 3 = segmentação Reverb; nº de pessoas informado vira pista (o programa detecta de fato).
+RESULT_VERSION = 3
 
 
 class Cancelled(Exception):
@@ -233,11 +240,16 @@ def _diarize_all(jobs: list[Job], settings: Settings) -> None:
     pending = [job for job in jobs if job.active and not job.reuse]
     if not pending:
         return
-    threshold = threshold_from_sensitivity(settings.sensibilidade_separacao)
+    options = {
+        "metodo": RESULT_VERSION,
+        "pessoas": None,  # preenchido por arquivo
+        "limiar": threshold_from_sensitivity(settings.sensibilidade_separacao),
+        "juntar": merge_similarity_from_sensitivity(settings.sensibilidade_separacao),
+    }
     todo = []
     for job in pending:
         assert job.entry is not None
-        cached = _load_diarization(job.entry, job.num_speakers, threshold)
+        cached = _load_diarization(job.entry, options | {"pessoas": job.num_speakers})
         if cached:
             job.turns, job.prints = cached
         else:
@@ -249,20 +261,29 @@ def _diarize_all(jobs: list[Job], settings: Settings) -> None:
     ui.info("A separação primeiro analisa a gravação inteira (a barra fica \"pulsando\", sem "
             "porcentagem, por alguns minutos) e depois mostra o andamento.")
     diarizer = Diarizer(settings.threads, settings.sensibilidade_separacao)
-    embedder = VoiceEmbedder(settings.threads) if settings.reconhecer_vozes else None
+    embedder = VoiceEmbedder(settings.threads)  # impressões vocais: refino e reconhecimento
     try:
         for index, job in enumerate(todo, start=1):
             assert job.entry is not None
             try:
                 samples = media.load_wav_lowmem(job.entry.audio_wav)
-                with ui.stage(f"[{index}/{len(todo)}] {job.source.name}: separando as vozes") as bar:
-                    job.turns = diarizer.run(samples, job.num_speakers, bar.update)
-                job.prints = voice_prints(samples, job.turns, embedder) if embedder else {}
+                label = f"[{index}/{len(todo)}] {job.source.name}"
+                with ui.stage(f"{label}: separando as vozes") as bar:
+                    result = separate_speakers(
+                        samples, job.num_speakers, diarizer, embedder, options["juntar"], bar.update,
+                        on_redo=lambda detected, bar=bar, label=label, hint=job.num_speakers: (
+                            bar.describe(f"{label}: a voz indicou {detected}; refazendo para {hint} pessoas")
+                        ),
+                    )
+                job.turns, job.prints = result.turns, result.prints
                 del samples
                 gc.collect()
-                _save_diarization(job.entry, job.num_speakers, threshold, job.turns, job.prints)
-                log.info("%s: %d vozes, %d trechos | memória pico %.0f MB", job.source.name,
-                         len({t.label for t in job.turns}), len(job.turns),
+                _save_diarization(job.entry, options | {"pessoas": job.num_speakers},
+                                  job.turns, job.prints)
+                _report_separation(job, result.found, result.detected, result.redone_with_hint)
+                log.info("%s: detectadas %d vozes, resultado final %d (refeita com a pista: %s), "
+                         "%d trechos | memória pico %.0f MB", job.source.name, result.detected,
+                         result.found, result.redone_with_hint, len(job.turns),
                          winsys.process_memory()[1] / 2**20)
             except MemoryError:
                 ui.warn(f"{job.source.name}: memória insuficiente para separar as vozes; "
@@ -279,30 +300,45 @@ def _diarize_all(jobs: list[Job], settings: Settings) -> None:
         gc.collect()
 
 
+def _report_separation(job: Job, found: int, detected: int, redone: bool) -> None:
+    """Explica na tela quantas pessoas foram identificadas e como isso se compara à pista dada."""
+    people = f"{found} {'pessoa identificada' if found == 1 else 'pessoas identificadas'} pela voz"
+    hint = job.num_speakers
+    if redone:
+        ui.ok(f"{job.source.name}: {people}. A análise automática achou {detected}, menos que as "
+              f"{hint} que você informou; a separação foi refeita procurando {hint}.")
+    elif hint and found > hint:
+        ui.warn(f"{job.source.name}: {people} — você informou {hint}. Confira nos exemplos: se "
+                "duas vozes forem da mesma pessoa, dê o mesmo nome a elas.")
+    else:
+        ui.ok(f"{job.source.name}: {people}.")
+
+
 def _load_diarization(
-    entry: cache.CacheEntry, num_speakers: int | None, threshold: float
+    entry: cache.CacheEntry, options: dict
 ) -> tuple[list[SpeakerTurn], dict[str, list[float]]] | None:
-    """Separação já feita com as mesmas opções (nº de pessoas e limiar)? Então reaproveita."""
+    """Separação já feita com o mesmo método e as mesmas opções? Então reaproveita."""
     try:
         data = json.loads(entry.diarization.read_text(encoding="utf-8"))
     except (OSError, ValueError):
         return None
-    if data.get("pessoas") != num_speakers or abs(data.get("limiar", -1) - threshold) > 1e-6:
-        return None
+    for key, value in options.items():
+        saved = data.get(key)
+        same = (abs(saved - value) <= 1e-6 if isinstance(value, float) and isinstance(saved, float)
+                else saved == value)
+        if not same:
+            return None
     turns = [SpeakerTurn(start, end, label) for start, end, label in data["trechos"]]
     return turns, data.get("impressoes", {})
 
 
 def _save_diarization(
     entry: cache.CacheEntry,
-    num_speakers: int | None,
-    threshold: float,
+    options: dict,
     turns: list[SpeakerTurn],
     prints: dict[str, list[float]],
 ) -> None:
-    data = {
-        "pessoas": num_speakers,
-        "limiar": threshold,
+    data = options | {
         "trechos": [[round(t.start, 3), round(t.end, 3), t.label] for t in turns],
         "impressoes": prints,
     }
@@ -337,6 +373,7 @@ def _finalize_all(jobs: list[Job], settings: Settings) -> None:
             engine=ENGINE_NAME,
             has_speakers=has_speakers,
             created_at=now(),
+            version=RESULT_VERSION,
         )
         job.transcript.save(job.entry.transcript)
         job.words = []

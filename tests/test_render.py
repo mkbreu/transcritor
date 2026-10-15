@@ -24,34 +24,36 @@ def make_transcript(**extra) -> Transcript:
     ]
     values = dict(source_name="reuniao.mp4", source_kind="video", duration=3133.0,
                   sentences=sentences, engine="teste", has_speakers=True,
-                  speaker_names={"A": "Fulano", "B": "Atendente", "C": "Fulano"}, me_label="A",
+                  speaker_names={"A": "Fulano", "B": "Atendente", "C": "Fulano"}, me_labels=["A", "C"],
                   created_at="14/10/2026 às 16:20")
     values.update(extra)
     return Transcript(**values)
 
 
-def test_txt_com_falantes_em_ordem_e_sem_horarios():
+def test_txt_com_falantes_em_ordem_e_trecho_de_tempo_por_paragrafo():
     text = render_text(make_transcript())
     assert "TRANSCRIÇÃO DE VÍDEO" in text
     assert "Participantes: Fulano (eu), Atendente" in text
     assert "Duração: 52 min 13 s" in text
     body = text.split("=" * 64)[1].strip().split("\n\n")
     assert body == [
-        "Fulano: Boa tarde. Houve uma tentativa de estorno, porém não houve efetivação.",
-        "Atendente: Vou verificar.",
-        "[Vozes sobrepostas]: Isso não pode!",
-        "Fulano: Certo, obrigado.",
+        "[00:00 – 00:05] Fulano: Boa tarde. Houve uma tentativa de estorno, porém não houve efetivação.",
+        "[00:05 – 00:06] Atendente: Vou verificar.",
+        "[00:07 – 00:08] [Vozes sobrepostas]: Isso não pode!",
+        "[00:09 – 00:10] Fulano: Certo, obrigado.",
     ]
-    assert "[00:" not in text
     assert '"[Vozes sobrepostas]"' in text  # explicação no cabeçalho
+    assert "[início – fim]" in text
 
 
-def test_opcoes_horario_e_uma_frase_por_linha():
-    text = render_text(make_transcript(), RenderOptions(show_times=True, one_sentence_per_line=True))
-    assert "[00:00] Fulano: Boa tarde." in text  # gravação com menos de 1 h: mm:ss
-    assert "[00:00] Fulano: Houve uma tentativa" in text
-    long = render_text(make_transcript(duration=4000), RenderOptions(show_times=True))
-    assert "[00:00:00] Fulano: Boa tarde." in long  # 1 h ou mais: hh:mm:ss
+def test_sem_horarios_e_uma_frase_por_linha():
+    plain = render_text(make_transcript(), RenderOptions(show_times=False))
+    assert "Fulano: Boa tarde. Houve uma tentativa" in plain and "[00:" not in plain
+    lines = render_text(make_transcript(), RenderOptions(one_sentence_per_line=True))
+    assert "[00:00 – 00:01] Fulano: Boa tarde." in lines
+    assert "[00:01 – 00:05] Fulano: Houve uma tentativa" in lines
+    long = render_text(make_transcript(duration=4000))
+    assert "[00:00:00 – 00:00:05] Fulano: Boa tarde." in long  # 1 h ou mais: hh:mm:ss
 
 
 def test_legenda_sem_falantes_vira_paragrafos():

@@ -5,8 +5,9 @@
 # =====================================================================
 
 [texto]
-# Colocar o horário da gravação no início de cada fala, ex.: [12:34] Fulano: ...
-mostrar_horarios = false
+# Marcar no início de cada parágrafo o trecho da gravação (início – fim), ex.:
+# [00:00 – 00:10] Fulano: ...   (false = texto sem horários)
+mostrar_horarios = true
 
 # Uma frase por linha (com o nome da pessoa em cada linha) em vez de parágrafos.
 uma_frase_por_linha = false
@@ -16,12 +17,13 @@ uma_frase_por_linha = false
 separar_vozes = true
 
 # Perguntar quantas pessoas falam antes de processar (Enter = descobrir sozinho).
-# Informar o número certo melhora bastante a separação.
+# O número é só uma pista: o programa sempre confere pela voz quantas pessoas falam.
+# Se ele achar MENOS que o informado, refaz procurando o seu número; se achar mais, mostra.
 perguntar_numero_de_pessoas = true
 
 # Sensibilidade da separação, de 0.05 a 0.95 (padrão 0.5).
-# Aumente se o programa juntar pessoas diferentes numa voz só;
-# diminua se ele dividir a mesma pessoa em várias vozes.
+# Aumente (ex.: 0.7) se o programa juntar pessoas diferentes numa voz só;
+# diminua (ex.: 0.3) se ele dividir a mesma pessoa em várias vozes.
 sensibilidade_separacao = 0.5
 
 # Reconhecer automaticamente vozes já conhecidas (a sua, por exemplo).
@@ -38,7 +40,7 @@ memorizar_outras_vozes = false
 salvar_audio_extraido = true
 
 [desempenho]
-# Quantos núcleos do processador usar (seu i5-4200U tem 4 threads).
+# Quantas "threads" do processador usar (um i5 de 2 núcleos, por exemplo, tem 4).
 threads = 4
 
 # Rodar com prioridade baixa para o computador continuar utilizável.

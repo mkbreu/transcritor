@@ -122,7 +122,10 @@ def ensure_models() -> None:
         return
     total = sum(spec.size for spec in missing)
     print(f"\nBaixando os modelos de IA ({models.human_size(total)}) para a pasta modelos\\")
-    print("Se a internet cair, rode de novo: o download continua de onde parou.\n")
+    print("Se a internet cair, rode de novo: o download continua de onde parou.")
+    if models.SEGMENTATION in missing:
+        print(f"Aviso de licença — separação de vozes: {models.SEGMENTATION_LICENSE_NOTICE}")
+    print()
     bar = _ConsoleBar()
     try:
         models.ensure_models(missing, progress=bar.update, log=bar.log)

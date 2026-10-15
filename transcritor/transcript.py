@@ -37,8 +37,14 @@ class Transcript:
     engine: str
     has_speakers: bool
     speaker_names: dict[str, str] = field(default_factory=dict)  # rótulo → nome escolhido
-    me_label: str | None = None  # rótulo da voz do próprio usuário
+    me_labels: list[str] = field(default_factory=list)  # vozes que são do próprio usuário
     created_at: str = ""
+    version: int = 1  # versão do método que gerou o resultado (ver pipeline.RESULT_VERSION)
+
+    @property
+    def me_name(self) -> str | None:
+        """Nome com que o usuário aparece no texto (se alguma voz foi marcada como dele)."""
+        return self.display_name(self.me_labels[0]) if self.me_labels else None
 
     @property
     def labels(self) -> list[str]:
@@ -64,6 +70,9 @@ class Transcript:
     def from_json(cls, text: str) -> Transcript:
         data = json.loads(text)
         data["sentences"] = [Sentence(**item) for item in data["sentences"]]
+        old_me = data.pop("me_label", None)  # formato antigo: uma voz só
+        if old_me and not data.get("me_labels"):
+            data["me_labels"] = [old_me]
         return cls(**data)
 
     def save(self, path: Path) -> None:

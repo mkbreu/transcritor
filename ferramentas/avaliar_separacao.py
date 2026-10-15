@@ -3,8 +3,11 @@
 Teste 1: "impressão vocal" — quão diferentes ficam pessoas diferentes (margem).
 Teste 2: conversa montada com 3 pessoas reais intercaladas (gabarito exato de quem fala).
 Teste 3: conversas reais de 2 e 4 pessoas — quantas vozes o sistema encontra sozinho.
+Teste 4: a separação completa do programa (com o refino), inclusive numa gravação sua
+         em que só uma pessoa fala (--uma-pessoa).
 
 Uso: .venv\\Scripts\\python ferramentas\\avaliar_separacao.py
+     .venv\\Scripts\\python ferramentas\\avaliar_separacao.py --testes 4 --uma-pessoa gravacao.mp4
 """
 
 from __future__ import annotations
@@ -41,8 +44,11 @@ EMBEDDINGS = {
 }
 EMBEDDINGS = {name: path for name, path in EMBEDDINGS.items() if path.exists()}
 SEGMENTERS = {
-    "pyannote-3.0": models.SEGMENTATION.file("model.onnx"),
-    "reverb-v1": CAND / "sherpa-onnx-reverb-diarization-v1" / "model.onnx",
+    "reverb-v1": models.SEGMENTATION.file("model.onnx"),  # padrão do programa
+    "pyannote-3.0": _first_existing(
+        CAND / "sherpa-onnx-pyannote-segmentation-3-0" / "model.onnx",
+        models.MODELS_DIR / "sherpa-onnx-pyannote-segmentation-3-0" / "model.onnx",
+    ),
 }
 SEGMENTERS = {name: path for name, path in SEGMENTERS.items() if path.exists()}
 SPEAKERS = ("fangjun", "leijun", "liudehua")
@@ -168,6 +174,43 @@ def test_matrix(configs: list[str], thresholds: list[float]) -> None:
             print(f"{seg_name}+{emb_name} passo {shift} | {name:20s} | " + " | ".join(row), flush=True)
 
 
+def test_program(single_speaker: Path | None) -> None:
+    """Teste 4: a separação completa exatamente como o programa faz (inclui o refino)."""
+    from transcritor.diarization import (
+        Diarizer,
+        VoiceEmbedder,
+        merge_similarity_from_sensitivity,
+        refine_speakers,
+    )
+
+    print("\n=== Teste 4: separação completa do programa (agrupamento + refino) ===", flush=True)
+    diarizer, embedder = Diarizer(threads=4, sensitivity=0.5), VoiceEmbedder(4)
+    cut = merge_similarity_from_sensitivity(0.5)
+    conversation, truth = build_conversation()
+    cases = [("3 pessoas reais (montada)", conversation, truth, SPEAKERS, 3)]
+    dialogue = tts_dialogue()
+    if dialogue:
+        cases.append(("diálogo pt-BR (TTS)", *dialogue, ("Daniel", "Maria"), 2))
+    for name, expected in (("1-two-speakers-en.wav", 2), ("2-two-speakers-en.wav", 2),
+                           ("3-two-speakers-en.wav", 2), ("0-four-speakers-zh.wav", 4)):
+        cases.append((name, load16k(REAL / name), None, None, expected))
+    if single_speaker:
+        temp = ROOT / "dados" / "teste" / "_uma_pessoa.16k.wav"
+        media.decode_to_wav(single_speaker, temp)
+        cases.append((single_speaker.name, media.load_wav_lowmem(temp), None, None, 1))
+    for name, samples, truth, speakers, expected in cases:
+        started = time.time()
+        raw = diarizer.run(samples, None)
+        turns, _ = refine_speakers(samples, raw, embedder, cut)
+        found = len({t.label for t in turns})
+        score = ""
+        if truth:
+            segments = [(t.start, t.end, t.label) for t in turns]
+            score = f" | acerto {accuracy(segments, truth, speakers) * 100:.0f}%"
+        print(f"{name:30s} esperado {expected} | bruto {len({t.label for t in raw})} → final {found}{score}"
+              f" | {time.time() - started:.0f}s", flush=True)
+
+
 def _combos(segmenters: list[str], embeddings: list[str]):
     return [(s, SEGMENTERS[s], e, EMBEDDINGS[e]) for s in segmenters for e in embeddings]
 
@@ -212,7 +255,12 @@ if __name__ == "__main__":
     parser.add_argument("--matriz", default="", help='ex.: "pyannote-3.0:campplus-zh_en:0.25,..."')
     parser.add_argument("--prioridade-normal", action="store_true",
                         help="não reduzir a prioridade (se outro programa estiver ocupando a CPU)")
+    parser.add_argument("--uma-pessoa", type=Path,
+                        help="teste 4: gravação em que só uma pessoa fala (deve sair 1 voz ou pouco mais)")
     args = parser.parse_args()
+    if "4" in args.testes.split(","):
+        test_program(args.uma_pessoa)
+        raise SystemExit(0)
     if args.matriz:
         if not args.prioridade_normal:
             winsys.lower_priority()

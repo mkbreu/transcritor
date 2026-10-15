@@ -7,6 +7,7 @@ from __future__ import annotations
 
 import json
 import logging
+import re
 from dataclasses import asdict, dataclass, field
 from datetime import datetime
 from pathlib import Path
@@ -148,6 +149,7 @@ def name_speakers(
     if not labels:
         return
     suggestions = _recognize(labels, prints, book, settings) if settings.reconhecer_vozes else {}
+    my_name = book.me.name if book.me else state.user_name
     shares = speaking_share(transcript)
     plural = "vozes" if len(labels) > 1 else "voz"
     ui.title(f"Quem é quem — {transcript.source_name}")
@@ -155,28 +157,57 @@ def name_speakers(
     if wav_path:
         ui.info("Digite o número de um exemplo para OUVIR o trecho; M mostra mais exemplos.")
     ui.info("Enter mantém o nome sugerido. O mesmo nome em duas vozes junta as duas.")
+    ui.info('Para marcar a SUA voz, escreva (eu) depois do nome — ex.: Maria (eu) — ou só: eu')
+    mine: set[str] = set()
     for label in labels:
         share, count = shares.get(label, (0.0, 0))
         current = transcript.speaker_names.get(label)
         suggestion = suggestions.get(label)
         default = current or (suggestion[0] if suggestion else default_name(label))
+        default_is_mine = label in transcript.me_labels or _same_name(default, my_name)
         ui.console.print()
         header = f"VOZ {label}  —  {share * 100:.0f}% da fala ({count} frases)"
         if suggestion and not current:
             header += f"  —  parece ser {suggestion[0]} (semelhança {suggestion[1] * 100:.0f}%)"
         ui.console.print(f"  [destaque]{ui.escape(header)}[/]")
-        transcript.speaker_names[label] = _ask_name(transcript, label, wav_path, default)
-    _update_profiles(transcript, prints, book, settings, state)
+        name, is_mine = _ask_name(transcript, label, wav_path, default, default_is_mine, my_name)
+        transcript.speaker_names[label] = name
+        if is_mine:
+            mine.add(label)
+            my_name = my_name or name  # quem digitar só "eu" depois recebe este nome
+    _update_profiles(transcript, prints, book, settings, state, mine, my_name)
 
 
-def _ask_name(transcript: Transcript, label: str, wav_path: Path | None, default: str) -> str:
+_ME_MARK = re.compile(r"\(\s*eu\s*\)", re.IGNORECASE)
+_ME_ALONE = {"eu", "eu mesmo", "eu mesma", "sou eu", "minha voz"}
+
+
+def parse_name(answer: str, my_name: str) -> tuple[str, bool]:
+    """Nome digitado → (nome, é a voz do usuário?). "Maria (eu)" e "eu" marcam a própria voz."""
+    text = " ".join(answer.split())
+    if _ME_MARK.search(text):
+        name = " ".join(_ME_MARK.sub(" ", text).split())
+        return name or my_name or "Eu", True
+    if text.casefold() in _ME_ALONE:
+        return my_name or "Eu", True
+    return text, _same_name(text, my_name)
+
+
+def _same_name(first: str, second: str) -> bool:
+    return bool(first and second) and first.casefold() == second.casefold()
+
+
+def _ask_name(
+    transcript: Transcript, label: str, wav_path: Path | None, default: str, default_is_mine: bool,
+    my_name: str,
+) -> tuple[str, bool]:
     samples = pick_samples(transcript, label)
     shown = {id(s) for s in samples}
     _print_samples(samples)
     while True:
         answer = ui.ask(f'Nome para a VOZ {label} (Enter = "{default}"):')
         if not answer:
-            return default
+            return default, default_is_mine
         if answer.isdigit() and wav_path and 1 <= int(answer) <= len(samples):
             sample = samples[int(answer) - 1]
             ui.info(f"Tocando o trecho de {format_clock(sample.start)}...")
@@ -194,7 +225,7 @@ def _ask_name(transcript: Transcript, label: str, wav_path: Path | None, default
         if answer.isdigit():
             ui.warn("Não há trecho com esse número para ouvir.")
             continue
-        return answer.strip()
+        return parse_name(answer, my_name)
 
 
 def _print_samples(samples: list[Sentence]) -> None:
@@ -225,39 +256,63 @@ def _recognize(
 
 def _update_profiles(
     transcript: Transcript, prints: dict[str, list[float]], book: VoiceBook, settings: Settings,
-    state: State,
+    state: State, mine: set[str], my_name: str,
 ) -> None:
     labels = transcript.labels
     names = transcript.speaker_names
-    me = book.me
-    my_name = (me.name if me else state.user_name).casefold()
-    me_label = next((lb for lb in labels if my_name and names.get(lb, "").casefold() == my_name), None)
-    if me_label is None and prints and settings.reconhecer_vozes:
-        question = ("Sua voz está nesta gravação? Digite a letra da sua voz (Enter = não está):" if me
-                    else "Qual destas vozes é a SUA? Digite a letra (Enter = pular):")
-        options = {lb.casefold(): lb for lb in labels}
-        while True:
-            answer = ui.ask(question).casefold()
-            if not answer or answer in options:
-                me_label = options.get(answer)
-                break
-            ui.warn(f"Digite uma das letras: {', '.join(labels)}.")
-    transcript.me_label = me_label
+    had_profile = book.me is not None
+    me_labels = [lb for lb in labels if lb in mine or _same_name(names.get(lb, ""), my_name)]
+    asked = False
+    if not me_labels and prints and settings.reconhecer_vozes:
+        me_labels = _ask_which_are_mine(labels, had_profile)
+        asked = True
+    if me_labels:
+        # Todas as vozes do usuário ficam com o mesmo nome (assim viram uma pessoa só no texto).
+        typed = [names[lb] for lb in me_labels if names.get(lb) not in (default_name(lb), "Eu")]
+        chosen = typed[0] if typed else my_name
+        if not chosen and asked:
+            chosen = ui.ask('Como você quer aparecer no texto? (Enter = "Eu"):')
+        for label in me_labels:
+            names[label] = chosen or "Eu"
+    transcript.me_labels = me_labels
+    if me_labels:
+        state.user_name = names[me_labels[0]]
     if not prints or not settings.reconhecer_vozes:
         return
     changed = False
-    if me_label and prints.get(me_label):
-        book.remember(names[me_label], prints[me_label], is_me=True)
-        state.user_name = names[me_label]
+    my_prints = [prints[lb] for lb in me_labels if prints.get(lb)]
+    if my_prints:
+        mean = np.mean(np.asarray(my_prints, dtype=np.float32), axis=0)
+        mean /= np.linalg.norm(mean) or 1.0
+        book.remember(names[me_labels[0]], mean.round(5).tolist(), is_me=True)
         changed = True
-        if not me:
-            ui.ok(f'Sua voz foi memorizada como "{names[me_label]}": nas próximas gravações '
+        if not had_profile:
+            ui.ok(f'Sua voz foi memorizada como "{names[me_labels[0]]}": nas próximas gravações '
                   "ela já vem com o seu nome.")
     if settings.memorizar_outras_vozes:
         for label in labels:
             name = names.get(label, "")
-            if label != me_label and prints.get(label) and name and name != default_name(label):
+            if label not in me_labels and prints.get(label) and name and name != default_name(label):
                 book.remember(name, prints[label], is_me=False)
                 changed = True
     if changed:
         book.save()
+
+
+def _ask_which_are_mine(labels: list[str], had_profile: bool) -> list[str]:
+    """Pergunta quais vozes são do usuário (pode ser mais de uma: "A C"). Enter = nenhuma."""
+    question = ("Sua voz está nesta gravação? Digite a(s) letra(s) da(s) sua(s) voz(es), ex.: A ou A C "
+                "(Enter = não está):" if had_profile else
+                "Alguma destas vozes é a SUA? Digite a(s) letra(s), ex.: A ou A C (Enter = nenhuma):")
+    options = {label.casefold(): label for label in labels}
+    while True:
+        answer = ui.ask(question).casefold()
+        if not answer:
+            return []
+        answer = re.sub(r"(?<=\S)\s+e\s+(?=\S)", " ", answer)  # "A e C" → "A C"
+        tokens = [t for t in re.split(r"[\s,;/]+", answer) if t]
+        if len(tokens) == 1 and tokens[0] not in options and all(ch in options for ch in tokens[0]):
+            tokens = list(tokens[0])  # "ac" → A e C
+        if tokens and all(token in options for token in tokens):
+            return list(dict.fromkeys(options[token] for token in tokens))
+        ui.warn(f"Digite letras entre: {', '.join(labels)} (ex.: A ou A C).")

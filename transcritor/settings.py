@@ -16,7 +16,7 @@ log = logging.getLogger(__name__)
 @dataclass
 class Settings:
     # [texto]
-    mostrar_horarios: bool = False
+    mostrar_horarios: bool = True
     uma_frase_por_linha: bool = False
     # [vozes]
     separar_vozes: bool = True

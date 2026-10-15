@@ -44,6 +44,10 @@ class Paragraph:
         return self.sentences[0].start
 
     @property
+    def end(self) -> float:
+        return self.sentences[-1].end
+
+    @property
     def text(self) -> str:
         return " ".join(sentence.text for sentence in self.sentences)
 
